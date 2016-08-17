@@ -3,7 +3,7 @@ from django.conf import settings
 from apptools.forms import DefaultAppStartForm
 from apptools.views import DefaultAppModel
 
-urlpatterns = patterns('django.contrib.auth.views.',
+urlpatterns = patterns('django.contrib.auth.views',
     (r'^.*/logout/$', 'logout'),
     (r'^.*/accounts/login/$', 'login', {'template_name':'goflow/login.html'}),
     (r'^apptools/', include('goflow.apptools.urls')),
@@ -34,4 +34,3 @@ urlpatterns += patterns('goflow.runtime.views',
     (r'^mywork/activate/(?P<id>.*)/$', 'activate'),
     (r'^mywork/complete/(?P<id>.*)/$', 'complete'),
 )
-

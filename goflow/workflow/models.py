@@ -1,7 +1,7 @@
 #!/usr/local/bin/python
 # -*- coding: utf-8 -*-
 from django.db import models
-from django.contrib.auth.models import Group, User, Permission
+from django.contrib.auth.models import Group, User
 from django.contrib.contenttypes.models import ContentType
 from django.core.urlresolvers import resolve
 
@@ -12,6 +12,10 @@ from decorators import allow_tags
 
 from datetime import datetime, timedelta
 from logger import Log; log = Log('goflow.workflow.managers')
+
+from authority.models import Permission
+import authority
+from authority import permissions
 
 class Activity(models.Model):
     """Activities represent any kind of action an employee might want to do on an instance.
@@ -96,14 +100,10 @@ class ProcessManager(models.Manager):
         '''
         if not self.is_enabled(process_name):
             raise Exception('process %s disabled.' % process_name)
-        
-        if user.has_perm("workflow.can_instantiate"):
-            lst = user.groups.filter(name=process_name)
-            if lst.count()==0 or \
-               (lst[0].permissions.filter(codename='can_instantiate').count() == 0):
-                raise Exception('permission needed to instantiate process %s.' % process_name)
-        else:
-            raise Exception('permission needed.')
+       
+        perm = ProcessPermission(user)
+        if not perm.instantiate(self.get(title=title)):
+            raise Exception('permission needed to instantiate process %s.' % process_name)
         return
 
 
@@ -131,10 +131,6 @@ class Process(models.Model):
     
     class Meta:
         verbose_name_plural = 'Processes'
-        permissions = (
-            ("can_instantiate", "Can instantiate"),
-            ("can_browse", "Can browse"),
-        )
     
     def __unicode__(self):
         return self.title
@@ -162,17 +158,8 @@ class Process(models.Model):
                                              defaults={'input':activity_in})
         return t
     
-    def create_authorized_group_if_not_exists(self):
-        g, created = Group.objects.get_or_create(name=self.title)
-        if created:
-            ptype = ContentType.objects.get_for_model(Process)
-            cip = Permission.objects.get(content_type=ptype, codename='can_instantiate')
-            g.permissions.add(cip)
-        
     def save(self, no_end=False):
         models.Model.save(self)
-        # instantiation group
-        self.create_authorized_group_if_not_exists()
         
         if not no_end and not self.end:
             self.end = Activity.objects.create(title='End', process=self, kind='dummy', autostart=True)
@@ -196,6 +183,15 @@ class Process(models.Model):
             # admin console error ?!?
             pass
         
+
+class ProcessPermission(permissions.BasePermission):
+    label = 'process_permission'
+    checks = ('instantiate', )
+
+    def instantiate_process(self, process):
+        return self.has_perm('process_permission.instantiate_process', process)
+
+authority.register(Process, ProcessPermission)
 
 
 class Application(models.Model):
@@ -264,9 +260,6 @@ class Application(models.Model):
             return
         
         g = Group.objects.create(name='test_%s' % self.url)
-        ptype = ContentType.objects.get_for_model(Process)
-        cip = Permission.objects.get(content_type=ptype, codename='can_instantiate')
-        g.permissions.add(cip)
         # group added to current user
         if user: 
             user.groups.add(g)
@@ -279,6 +272,16 @@ class Application(models.Model):
         p.begin.application = self
         p.begin.description = 'test activity for application %s' % self.url
         p.begin.save()
+
+        pm = Permission()
+        if user:
+            pm.creator = user
+        pm.content_type = ContentType.objects.get_for_model(Process)
+        pm.object_id = p
+        pm.codename = 'test_%s' % self.url
+        pm.approved = True
+        pm.group = g
+        pm.save()
         
         p.begin.roles.add(g)
         

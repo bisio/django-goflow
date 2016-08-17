@@ -821,7 +821,7 @@ class Event(models.Model):
     """Event are changes that happens on workitems.
     """
     date = models.DateTimeField(auto_now=True)
-    name = models.CharField(max_length=50)
+    name = models.CharField(max_length=255)
     workitem = models.ForeignKey(WorkItem, related_name='events')
     
     def __unicode__(self):
